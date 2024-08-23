@@ -21,7 +21,7 @@ func TestScheduledJob(t *testing.T) {
 	sf := ScheduleFunc(
 		ctx,
 		s,
-		&ScheduledJobOptions{
+		ScheduledJobOptions{
 			MaxConcurrent:        10,
 			TickerReceiveTimeout: 5 * time.Second,
 		},
@@ -119,7 +119,7 @@ func TestScheduledContext(t *testing.T) {
 	ranCh := make(chan struct{}, 1)
 	sj := NewScheduledJob(
 		s,
-		&ScheduledJobOptions{
+		ScheduledJobOptions{
 			MaxConcurrent:        1,
 			TickerReceiveTimeout: 5 * time.Second,
 		},
@@ -169,7 +169,7 @@ func TestJobFailure(t *testing.T) {
 	sj := ScheduleFunc(
 		ctx,
 		s,
-		&ScheduledJobOptions{
+		ScheduledJobOptions{
 			MaxConcurrent:        0,
 			TickerReceiveTimeout: 5 * time.Second,
 		},
@@ -214,7 +214,7 @@ func TestPreviouslyStarted(t *testing.T) {
 	sj := ScheduleFunc(
 		ctx,
 		s,
-		&ScheduledJobOptions{
+		ScheduledJobOptions{
 			MaxConcurrent:        0,
 			TickerReceiveTimeout: 5 * time.Second,
 		}, func(dt time.Time) error {
@@ -245,7 +245,7 @@ func TestAlreadyStopped(t *testing.T) {
 	sj := ScheduleFunc(
 		ctx,
 		s,
-		&ScheduledJobOptions{
+		ScheduledJobOptions{
 			MaxConcurrent:        0,
 			TickerReceiveTimeout: 5 * time.Second,
 		},
@@ -279,7 +279,7 @@ func TestJobMaxFailures(t *testing.T) {
 	}
 	sj := NewScheduledJob(
 		s,
-		&ScheduledJobOptions{
+		ScheduledJobOptions{
 			MaxConcurrent:        3,
 			TickerReceiveTimeout: 5 * time.Second,
 			MaxFailures:          3,
@@ -323,7 +323,7 @@ func TestJobConsecutiveFailures(t *testing.T) {
 	doneCh := make(chan struct{}, 10)
 	sj := NewScheduledJob(
 		s,
-		&ScheduledJobOptions{
+		ScheduledJobOptions{
 			MaxConcurrent:          3,
 			TickerReceiveTimeout:   5 * time.Second,
 			MaxConsecutiveFailures: 3,

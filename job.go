@@ -35,6 +35,15 @@ type ScheduledJobOptions struct {
 	MaxConsecutiveFailures int
 }
 
+func (s ScheduledJobOptions) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Int("max_concurrent", s.MaxConcurrent),
+		slog.Int("max_failures", s.MaxFailures),
+		slog.Int("max_consecutive_failures", s.MaxConsecutiveFailures),
+		slog.Duration("ticker_receive_timeout", s.TickerReceiveTimeout),
+	)
+}
+
 // ScheduledJob is a function that runs on Ticker ticks
 // for a Schedule
 type ScheduledJob struct {
@@ -65,10 +74,10 @@ type ScheduledJob struct {
 
 func NewScheduledJob(
 	schedule *Schedule,
-	opts *ScheduledJobOptions,
+	opts ScheduledJobOptions,
 	f func(t time.Time) error,
 ) *ScheduledJob {
-	return &ScheduledJob{
+	job := &ScheduledJob{
 		schedule: schedule,
 		ticker: NewTicker(
 			context.Background(),
@@ -78,14 +87,38 @@ func NewScheduledJob(
 		f:        f,
 		runtimes: make([]*JobRuntime, 0),
 		stopCh:   make(chan struct{}, 1),
-		options:  *opts,
+		options:  opts,
 	}
+
+	return job
+}
+
+func (s ScheduledJob) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("schedule", s.schedule.String()),
+		slog.Group(
+			"options", slog.Int("max_concurrent", s.options.MaxConcurrent),
+			slog.Int("max_failures", s.options.MaxFailures),
+			slog.Int(
+				"max_consecutive_failures",
+				s.options.MaxConsecutiveFailures,
+			),
+			slog.Duration(
+				"ticker_receive_timeout",
+				s.options.TickerReceiveTimeout,
+			),
+		),
+		slog.Int64("failures", s.Failures.Load()),
+		slog.Int64("consecutive_failures", s.ConsecutiveFailures.Load()),
+		slog.Int64("runs", s.Runs.Load()),
+		slog.Int64("running", s.Running.Load()),
+	)
 }
 
 func ScheduleFunc(
 	ctx context.Context,
 	schedule *Schedule,
-	opts *ScheduledJobOptions,
+	opts ScheduledJobOptions,
 	f func(t time.Time) error,
 ) *ScheduledJob {
 
@@ -97,7 +130,7 @@ func ScheduleFunc(
 		stopCh:            make(chan struct{}, 1),
 		state:             atomic.Int64{},
 		previouslyStarted: atomic.Bool{},
-		options:           *opts,
+		options:           opts,
 	}
 	s.state.Store(int64(ScheduleStarted))
 	s.previouslyStarted.Store(true)
@@ -125,7 +158,6 @@ func (s *ScheduledJob) Start(ctx context.Context) error {
 func (s *ScheduledJob) Stop(ctx context.Context) bool {
 	select {
 	case <-ctx.Done():
-		// return ctx.Err()
 	case s.stopCh <- struct{}{}:
 		//
 	}
@@ -224,7 +256,11 @@ func (s *ScheduledJob) start(ctx context.Context) error {
 			case rt := <-s.ticker.C:
 				switch {
 				case ScheduleState(s.state.Load()) == ScheduleSuspended:
-					slog.Info("execution suspended, skipping tick", "tick", rt)
+					Logger.Debug(
+						"execution suspended, skipping tick",
+						"scheduled_job", s,
+						"tick", rt,
+					)
 				case jobCh == nil:
 					wg.Add(1)
 					go func() {
@@ -239,7 +275,6 @@ func (s *ScheduledJob) start(ctx context.Context) error {
 		}
 	}()
 	wg.Wait()
-	// s.state.Store(int64(ScheduleStopped))
 	return nil
 }
 
@@ -253,7 +288,8 @@ func (s *ScheduledJob) execute(rt time.Time) {
 	defer s.mu.Unlock()
 
 	runtime := &JobRuntime{Start: rt}
-	slog.Info("running")
+
+	Logger.Info("running scheduled job", "scheduled_job", s)
 
 	runtime.Error = s.f(rt)
 	if runtime.Error == nil {
@@ -263,10 +299,9 @@ func (s *ScheduledJob) execute(rt time.Time) {
 		consecutiveFailures := s.ConsecutiveFailures.Add(1)
 
 		if s.options.MaxFailures > 0 && failures >= int64(s.options.MaxFailures) {
-			slog.Warn(
+			Logger.Warn(
 				"max failures reached, stopping job",
-				"max_failures", s.options.MaxFailures,
-				"failures", failures,
+				"scheduled_job", s,
 			)
 			select {
 			case s.stopCh <- struct{}{}:
@@ -274,10 +309,9 @@ func (s *ScheduledJob) execute(rt time.Time) {
 			}
 		} else if s.options.MaxConsecutiveFailures > 0 &&
 			consecutiveFailures >= int64(s.options.MaxConsecutiveFailures) {
-			slog.Warn(
+			Logger.Warn(
 				"max consecutive failures reached, stopping job",
-				"max_consecutive_failures", s.options.MaxConsecutiveFailures,
-				"consecutive_failures", consecutiveFailures,
+				"scheduled_job", s,
 			)
 			select {
 			case s.stopCh <- struct{}{}:
@@ -287,12 +321,11 @@ func (s *ScheduledJob) execute(rt time.Time) {
 	}
 
 	runtime.End = time.Now()
-	slog.Info(
+	Logger.Info(
 		"job finished",
-		"Start",
-		runtime.Start,
-		"end",
-		runtime.End,
+		"start", runtime.Start,
+		"end", runtime.End,
+		"scheduled_job", s,
 	)
 	s.runtimes = append(s.runtimes, runtime)
 }

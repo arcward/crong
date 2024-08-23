@@ -2,11 +2,14 @@ package crong
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+var Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 // Ticker is a cron ticker that sends the current time
 // on the Ticker.C channel when the schedule is triggered
@@ -26,8 +29,6 @@ type Ticker struct {
 	ticksSent    atomic.Int64
 	ticksDropped atomic.Int64
 	mu           sync.Mutex
-
-	// cronTicker *time.Ticker
 }
 
 // NewTicker creates a new Ticker from a cron expression,
@@ -60,7 +61,7 @@ func NewTicker(
 		for {
 			select {
 			case <-t.stop:
-				slog.Info("ticker stopped, canceling")
+				Logger.Debug("ticker stopped, canceling", "ticker", t)
 				cancel()
 				return
 			case <-ctx.Done():
@@ -75,9 +76,9 @@ func NewTicker(
 		t.tickOnSchedule(ctx)
 	}()
 
-	slog.Info("waiting for initial tick")
+	Logger.Debug("waiting for initial tick", "ticker", t)
 	init := <-t.tickCh
-	slog.Info("initial tick", "time", init)
+	Logger.Debug("initial tick", "time", init, "ticker", t)
 	wg.Add(1)
 	go func() {
 		wg.Done()
@@ -105,11 +106,20 @@ func (t *Ticker) tickOnSchedule(ctx context.Context) {
 	t.tickCh <- time.Now().In(t.schedule.loc)
 	nextTime := t.schedule.nextNoTruncate(time.Now().In(loc).Truncate(time.Minute))
 	sleepDone := make(chan struct{}, 1)
-	slog.Info("starting tick on schedule", "next_time", nextTime)
+	Logger.Debug(
+		"starting tick on schedule",
+		"next_time", nextTime,
+		"ticker", t,
+	)
 	for ctx.Err() == nil {
 		now := time.Now().In(t.schedule.loc)
 		if timesEqualToMinute(now, nextTime) {
-			slog.Info("saw tick", "next_time", nextTime, "now", now)
+			Logger.Debug(
+				"saw tick",
+				"next_time", nextTime,
+				"now", now,
+				"ticker", t,
+			)
 			t.tick(ctx)
 			nextTime = t.schedule.nextNoTruncate(
 				time.Now().In(loc).Truncate(time.Minute),
@@ -120,16 +130,13 @@ func (t *Ticker) tickOnSchedule(ctx context.Context) {
 		untilNextMinute := nextMinute.Sub(time.Now())
 		sleepDuration := untilNextMinute + (1 * time.Second)
 
-		slog.Info(
+		Logger.Info(
 			"sleeping",
-			"duration",
-			sleepDuration,
-			"next_time",
-			nextTime,
-			"now",
-			now,
-			"until_next_minute",
-			untilNextMinute,
+			"duration", sleepDuration,
+			"next_time", nextTime,
+			"now", now,
+			"until_next_minute", untilNextMinute,
+			"ticker", t,
 		)
 		go func() {
 			time.Sleep(sleepDuration)
@@ -151,23 +158,21 @@ func (t *Ticker) run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Info("ticker stopped, breaking")
+			Logger.Debug("ticker stopped, breaking", "ticker", t)
 			return
 		case currentTick := <-t.tickCh:
-			slog.Info(
+			Logger.Debug(
 				"schedule triggered",
-				"current_tick",
-				currentTick,
-				"schedule",
-				t.schedule,
+				"current_tick", currentTick,
+				"ticker", t,
 			)
 			tctx, tcancel := context.WithTimeout(ctx, t.sendTimeout)
 			select {
 			case t.C <- currentTick:
 				t.ticksSent.Add(1)
-				slog.Info("sent tick")
+				Logger.Debug("sent tick", "ticker", t)
 			case <-tctx.Done():
-				slog.Warn("dropped tick")
+				Logger.Debug("dropped tick", "ticker", t)
 				t.ticksDropped.Add(1)
 			}
 			tcancel()
@@ -182,7 +187,7 @@ func (t *Ticker) tick(ctx context.Context) bool {
 	case <-ctx.Done():
 		return false
 	case t.tickCh <- nt:
-		slog.Info("sent tick", "tick", nt)
+		Logger.Info("sent tick", "tick", nt, "ticker", t)
 		t.ticksSeen.Add(1)
 
 		t.mu.Lock()
@@ -193,6 +198,18 @@ func (t *Ticker) tick(ctx context.Context) bool {
 		}
 		return true
 	}
+}
+
+func (t Ticker) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("schedule", t.schedule.String()),
+		slog.Group(
+			"ticks",
+			"seen", t.ticksSeen.Load(),
+			"sent", t.ticksSent.Load(),
+			"dropped", t.ticksDropped.Load(),
+		),
+	)
 }
 
 func timesEqualToMinute(t1, t2 time.Time) bool {
