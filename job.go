@@ -115,13 +115,43 @@ func (s ScheduledJob) LogValue() slog.Value {
 	)
 }
 
+// ScheduleFunc creates and starts a new ScheduledJob with the given schedule and options.
+// It immediately begins executing the provided function according to the schedule.
+//
+// The function f will be called with the current time whenever the schedule is triggered.
+// If f returns an error, it will be recorded in the job's runtime history.
+//
+// Parameters:
+//   - ctx: A context.Context for cancellation and timeout control.
+//   - schedule: A *Schedule that determines when the job should run.
+//   - opts: ScheduledJobOptions to configure the job's behavior.
+//   - f: A function to be executed on each scheduled tick, with the signature func(time.Time) error.
+//
+// Returns:
+//   - *ScheduledJob: A pointer to the newly created and started ScheduledJob.
+//
+// The returned ScheduledJob is already running and does not need to be started manually.
+// Use the returned ScheduledJob's methods (e.g., Stop, Suspend, Resume) to control its execution.
+//
+// Example:
+//
+//	schedule, _ := crong.New("*/5 * * * *", nil)
+//	job := crong.ScheduleFunc(ctx, schedule, crong.ScheduledJobOptions{
+//		MaxConcurrent: 1,
+//		TickerReceiveTimeout: 5 * time.Second,
+//	}, func(t time.Time) error {
+//		fmt.Printf("Job ran at %v\n", t)
+//		return nil
+//	})
+//
+//	// ... later
+//	job.Stop(context.Background())
 func ScheduleFunc(
 	ctx context.Context,
 	schedule *Schedule,
 	opts ScheduledJobOptions,
 	f func(t time.Time) error,
 ) *ScheduledJob {
-
 	s := &ScheduledJob{
 		schedule:          schedule,
 		ticker:            NewTicker(ctx, schedule, opts.TickerReceiveTimeout),

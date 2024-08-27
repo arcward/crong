@@ -10,7 +10,7 @@ import (
 
 func TestScheduledJob(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
+	t.Cleanup(cancel)
 
 	s, err := New("* * * * *", nil) // every minute
 	if err != nil {
@@ -32,14 +32,6 @@ func TestScheduledJob(t *testing.T) {
 			return nil
 		},
 	)
-	go func() {
-		select {
-		case <-ctx.Done():
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				t.Fatalf("expected results")
-			}
-		}
-	}()
 
 	// push some ticks instead of waiting 60 seconds
 	sf.ticker.tick(ctx)

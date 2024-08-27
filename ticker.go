@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// Logger used by [Ticker] and [ScheduledJob]. By default, it discards all logs.
 var Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 // Ticker is a cron ticker that sends the current time

@@ -7,6 +7,8 @@ import (
 )
 
 func TestTicker(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
@@ -65,9 +67,11 @@ func TestEarlyTicker(t *testing.T) {
 	}
 }
 
+// TestTickerCanceled verifies that we no longer receive ticks after
+// canceling the context provided to the ticker
 func TestTickerCanceled(t *testing.T) {
-	// verify that we no longer receive ticks after canceling
-	// the tick context
+	t.Parallel()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -116,6 +120,8 @@ func TestTickerCanceled(t *testing.T) {
 }
 
 func TestTickerSendTimeout(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

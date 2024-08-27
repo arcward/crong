@@ -640,15 +640,6 @@ func checkTimes(t *testing.T, tc testCase, s *Schedule) {
 		)
 	}
 
-	// currentSchedule := testCases[0]
-	// if !s.Matches(currentSchedule) {
-	// 	t.Fatalf(
-	// 		"expected %s to match %s",
-	// 		currentSchedule,
-	// 		s.String(),
-	// 	)
-	// }
-
 	for i := 0; i < len(testCases); i++ {
 		if i+1 == len(testCases) {
 			break
